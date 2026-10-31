@@ -11,7 +11,8 @@ DSR_MD5=b8c3887e8273c8caedecb1d0053af28f
 
 [ -e "$DEST/disk0/dsr" ] && { echo "Already set up: $DEST/disk0"; exit 0; }
 mkdir -p "$DEST"
-7z x -y -o"$DEST" "$ZIP" >/dev/null
+# disk0/drv/ is the cabinet's kernel and NVIDIA driver set (full of relative symlinks): not needed on a PC
+7z x -y -o"$DEST" "$ZIP" -xr'!disk0/drv' >/dev/null
 [ -e "$DEST/disk0/dsr" ] || { echo "No disk0/dsr in $ZIP: not an R-Tuned dump?" >&2; exit 1; }
 chmod +x "$DEST/disk0/dsr"
 md5="$(md5sum <"$DEST/disk0/dsr" | cut -d' ' -f1)"
