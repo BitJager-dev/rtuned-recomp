@@ -1,0 +1,9 @@
+# Game files are never committed - supply your own dump
+game/
+disk0/
+*.farc
+dsr
+# Build output
+dist-linux/
+build/
+out/
