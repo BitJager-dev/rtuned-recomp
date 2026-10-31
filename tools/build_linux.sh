@@ -21,19 +21,20 @@ if [ ! -d "$LOADER/.git" ]; then git clone -q "$LOADER_REPO" "$LOADER"; fi
 git -C "$LOADER" fetch -q origin || true
 
 # Reset to the pinned commit and apply our patches whenever the patch set changes
-STAMP="$LOADER_REV-$(cat "$ROOT"/patches/loader/*.patch 2>/dev/null | sha1sum | cut -c1-12)"
+shopt -s nullglob
+PATCHES=("$ROOT"/patches/loader/*.patch)
+STAMP="$LOADER_REV-$(cat /dev/null "${PATCHES[@]}" | sha1sum | cut -c1-12)"
 if [ "$(cat "$LOADER/.rtuned-stamp" 2>/dev/null)" != "$STAMP" ]; then
   git -C "$LOADER" checkout -q -f "$LOADER_REV"
   git -C "$LOADER" clean -q -fdx
-  for p in "$ROOT"/patches/loader/*.patch; do
-    [ -e "$p" ] || continue
+  for p in "${PATCHES[@]}"; do
     echo "== patch $(basename "$p")"
     git -C "$LOADER" apply "$p"
   done
   echo "$STAMP" >"$LOADER/.rtuned-stamp"
 fi
 
-# The loader's Makefile looks in /app/lib32 (flatpak); point the compiler and linker at our prefix instead
+# The loader's Makefile looks in /app/lib32 (flatpak); point the compiler and linker at our prefix instead.
 PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:/usr/lib32/pkgconfig" \
 LIBRARY_PATH="$PREFIX/lib:/usr/lib32" \
 C_INCLUDE_PATH="$PREFIX/include" CPLUS_INCLUDE_PATH="$PREFIX/include" \
@@ -43,7 +44,6 @@ rm -rf "$DIST"; mkdir -p "$DIST/lib32"
 cp -a "$LOADER"/build/. "$DIST/"
 cp -a "$LOADER"/libs/libCg.so "$DIST/lib32/"
 cp -a "$PREFIX"/lib/libSDL3*.so* "$PREFIX"/lib/libglut.so* "$DIST/lib32/"
-cp "$LOADER/docs/lindbergh.conf" "$DIST/lindbergh.conf.default"
 cp "$ROOT/tools/run.sh" "$DIST/run.sh"
 chmod +x "$DIST/run.sh"
 git -C "$ROOT" rev-parse --short HEAD >"$DIST/VERSION" 2>/dev/null || echo dev >"$DIST/VERSION"

@@ -1,0 +1,48 @@
+diff --git a/src/lindbergh/hook.c b/src/lindbergh/hook.c
+index 84d4c42..8037431 100644
+--- a/src/lindbergh/hook.c
++++ b/src/lindbergh/hook.c
+@@ -756,7 +756,7 @@ FILE *fopen(const char *restrict pathname, const char *restrict mode)
+     }
+ 
+     char *newPathname;
+-    if ((newPathname = strstr(pathname, "/home/disk0")) != NULL)
++    if ((newPathname = (char *)strstr(pathname, "/home/disk0")) != NULL)
+     {
+         memmove(newPathname + 2, newPathname + 11, strlen(newPathname + 11) + 1);
+         memcpy(newPathname, "..", 2);
+@@ -764,7 +764,7 @@ FILE *fopen(const char *restrict pathname, const char *restrict mode)
+     }
+ 
+     // Fix for Outrun high scores
+-    if ((newPathname = strstr(pathname, "/home/disk1")) != NULL && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
++    if ((newPathname = (char *)strstr(pathname, "/home/disk1")) != NULL && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
+     {
+         pathname = newPathname + 12;
+     }
+diff --git a/src/lindbergh/patchNetwork.c b/src/lindbergh/patchNetwork.c
+index 7d2c98c..21cca0a 100644
+--- a/src/lindbergh/patchNetwork.c
++++ b/src/lindbergh/patchNetwork.c
+@@ -188,7 +188,7 @@ in_addr_t inet_addr(const char *cp)
+     return _inet_addr(cp);
+ }
+ 
+-char *strstr(const char *haystack, const char *needle)
++char *(strstr)(const char *haystack, const char *needle)
+ {
+     char *(*_strstr)(const char *__haystack, const char *__needle) = dlsym(RTLD_NEXT, "strstr");
+ 
+diff --git a/src/lindbergh/sdlInput.c b/src/lindbergh/sdlInput.c
+index bec3df4..dac6dce 100644
+--- a/src/lindbergh/sdlInput.c
++++ b/src/lindbergh/sdlInput.c
+@@ -1160,7 +1160,7 @@ void loadGlobalConfig(const IniConfig *ini)
+             else
+             {
+                 // Handle generic keys and other settings
+-                char *deadzonePos = strstr(key, "_DeadZone");
++                char *deadzonePos = (char *)strstr(key, "_DeadZone");
+                 if (deadzonePos != NULL)
+                 {
+                     // Generic key found (e.g., "Steer_DeadZone")

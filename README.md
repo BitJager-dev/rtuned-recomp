@@ -33,8 +33,8 @@ The 32-bit libraries go to `../deps/prefix32` (shared by all Lindbergh projects 
 root. Build needs: gcc with `-m32`, git, python3 and the 32-bit X11/GL/ALSA/udev/freetype libraries (Arch names in
 `tools/build_deps32.sh`). For controllers and the serial emulation, your user should be in the `input` group.
 
-Settings: `game/disk0/lindbergh.conf` (created from the loader's default on the first start), controls in
-`controls.ini` (see the loader's [controls guide](https://github.com/lindbergh-loader/lindbergh-loader/blob/master/docs/CONTROLS.md)).
+Settings: `game/disk0/lindbergh.ini` (the loader's defaults, created on the first start), controls in
+`game/disk0/controls.ini` (see the loader's [controls guide](https://github.com/lindbergh-loader/lindbergh-loader/blob/master/docs/CONTROLS.md)).
 
 ## Status
 

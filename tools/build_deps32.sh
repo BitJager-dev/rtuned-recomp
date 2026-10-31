@@ -24,7 +24,7 @@ LIBS=(
   "SDL3_image|https://github.com/libsdl-org/SDL_image.git|release-3.4.6|-DSDLIMAGE_VENDORED=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF"
   "SDL3_ttf|https://github.com/libsdl-org/SDL_ttf.git|release-3.2.2|-DSDLTTF_VENDORED=OFF -DSDLTTF_HARFBUZZ=OFF -DSDLTTF_PLUTOSVG=OFF -DSDLTTF_SAMPLES=OFF"
   "FAudio|https://github.com/FNA-XNA/FAudio.git|26.09|-DBUILD_SHARED_LIBS=OFF"
-  "freeglut|https://github.com/freeglut/freeglut.git|v3.6.0|-DFREEGLUT_BUILD_DEMOS=OFF -DFREEGLUT_BUILD_STATIC_LIBS=OFF -DFREEGLUT_GLES=OFF"
+  "freeglut|https://github.com/freeglut/freeglut.git|v3.6.0|-DFREEGLUT_BUILD_DEMOS=OFF -DFREEGLUT_BUILD_STATIC_LIBS=OFF -DFREEGLUT_GLES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_STANDARD=11"
 )
 
 if command -v cmake >/dev/null && command -v ninja >/dev/null; then

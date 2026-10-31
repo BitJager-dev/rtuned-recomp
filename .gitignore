@@ -7,3 +7,4 @@ dsr
 dist-linux/
 build/
 out/
+logs/

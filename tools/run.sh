@@ -15,9 +15,11 @@ done
 for f in lindbergh lindbergh.so libsegaapi.so libkswapapi.so libposixtime.so libposixtime.so.1 libposixtime.so.2.4; do
   [ -e "$HERE/$f" ] && ln -sfn "$HERE/$f" "$GAME/$f"
 done
-[ -e "$GAME/lindbergh.conf" ] || cp "$HERE/lindbergh.conf.default" "$GAME/lindbergh.conf"
 
 export LD_LIBRARY_PATH="$GAME:$HERE/lib32${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Loader defaults on the first start (settings and controls stay with the game folder)
+[ -e "$GAME/lindbergh.ini" ] || (cd "$GAME" && ./lindbergh --create config . >/dev/null)
+[ -e "$GAME/controls.ini" ] || (cd "$GAME" && ./lindbergh --create controls . >/dev/null)
 if [ "${RTUNED_ZINK:-0}" = 1 ]; then
   export MESA_LOADER_DRIVER_OVERRIDE=zink __GLX_VENDOR_LIBRARY_NAME=mesa
 fi
