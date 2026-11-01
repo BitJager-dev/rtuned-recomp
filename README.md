@@ -36,11 +36,28 @@ root. Build needs: gcc with `-m32`, git, python3 and the 32-bit X11/GL/ALSA/udev
 Settings: `game/disk0/lindbergh.ini` (the loader's defaults, created on the first start), controls in
 `game/disk0/controls.ini` (see the loader's [controls guide](https://github.com/lindbergh-loader/lindbergh-loader/blob/master/docs/CONTROLS.md)).
 
+The build runs in a container (`tools/docker_build.sh`, image from `docker/Dockerfile`, Arch with multilib): it
+does both steps above and writes `logs/build.log`. `tools/docker_build.sh --shell` opens a shell in it.
+
+On the first start `run.sh` sets free play and fullscreen, and puts the coin on the pad's Back/View button
+(keyboard: 5). Only one copy runs at a time: the game ignores SIGTERM, so stop a stuck one with `pkill -9 -x dsr`.
+
+## Patches
+
+| Patch | Fixes |
+|---|---|
+| `loader/0001` | Build with glibc 2.42 (`strstr` returns `const char *` for a `const` argument) |
+| `loader/0002` | segaapi: calls on destroyed buffers are ignored instead of using freed memory; voice destroy/recreate under the audio lock |
+| `loader/0003` | The SIGSEGV handler (there to emulate IN/OUT) "skipped" real memory faults byte by byte; they now crash with the right registers |
+| `loader/0004` | segaapi: empty FAudio callbacks left NULL, so FAudio doesn't drop its locks for them (see FAudio/0001) |
+| `FAudio/0001` | Mixer kept a pointer into the decode buffer across the OnBufferStart callback; a `SetSourceSampleRate` from the game in that window moved the buffer and the mixer wrote into freed memory (crash in races) |
+
 ## Status
 
-- [x] Repo, deps and build scripts
-- [ ] First boot on Linux / AMD (Mesa radeonsi) and on Zink
-- [ ] Controls (pad + wheel), force feedback, sound
+- [x] Repo, deps and build scripts, container build
+- [x] First boot on Linux / AMD (Mesa radeonsi)
+- [x] Pad, force feedback, sound; in-race audio crash fixed (long unattended runs)
+- [ ] Zink (Vulkan), wheel
 - [ ] Launcher, release packaging
 
 ## License

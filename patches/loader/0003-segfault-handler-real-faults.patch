@@ -1,0 +1,33 @@
+--- a/src/lindbergh/hook.c
++++ b/src/lindbergh/hook.c
+@@ -16,6 +16,7 @@
+ #include <stdio.h>
+ #include <stdint.h>
+ #include <sys/ioctl.h>
++#include <unistd.h>
+ 
+ #include "cardReader.h"
+ #include "baseBoard.h"
+@@ -92,6 +93,22 @@
+ {
+     ucontext_t *ctx = ptr;
+ 
++    // IN/OUT from user mode arrive as a general protection fault (SI_KERNEL). A real bad memory access must not be
++    // "skipped" byte by byte below: that runs misaligned code until it ends at a random address. Report it and let
++    // it crash with the original registers, so the core dump shows where it happened.
++    if (info->si_code == SEGV_MAPERR || info->si_code == SEGV_ACCERR)
++    {
++        char msg[96];
++        int n = snprintf(msg, sizeof(msg), "lindbergh: segfault at eip %08lx, address %p\n",
++                         (unsigned long)ctx->uc_mcontext.gregs[REG_EIP], info->si_addr);
++        if (n > 0)
++            write(STDERR_FILENO, msg, (size_t)n);
++        struct sigaction dfl = {0};
++        dfl.sa_handler = SIG_DFL;
++        sigaction(SIGSEGV, &dfl, NULL);
++        return;
++    }
++
+     // Get the address of the instruction causing the segfault
+     // uint8_t *code = (uint8_t *)ctx->uc_mcontext.gregs[REG_EIP];
+     greg_t eip_value = ctx->uc_mcontext.gregs[REG_EIP];

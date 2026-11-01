@@ -5,6 +5,7 @@
 #   tools/build_deps32.sh            # build what is missing
 #   tools/build_deps32.sh --force    # rebuild everything
 #
+# Patches in patches/<name>/*.patch are applied on top of the tag.
 # Output: $DEPS/prefix32/{lib,include}. $DEPS defaults to ../deps (shared by all lindbergh projects).
 # Needs: gcc/g++ with -m32 (gcc-multilib), git, python3, and 32-bit X11/GL/ALSA/udev/freetype dev libraries
 # (Arch: lib32-mesa lib32-glu lib32-libx11 lib32-libxext lib32-libxi lib32-libxrandr lib32-libxcursor lib32-libxss
@@ -23,7 +24,7 @@ LIBS=(
   "SDL3|https://github.com/libsdl-org/SDL.git|release-3.4.16|-DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"
   "SDL3_image|https://github.com/libsdl-org/SDL_image.git|release-3.4.6|-DSDLIMAGE_VENDORED=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF"
   "SDL3_ttf|https://github.com/libsdl-org/SDL_ttf.git|release-3.2.2|-DSDLTTF_VENDORED=OFF -DSDLTTF_HARFBUZZ=OFF -DSDLTTF_PLUTOSVG=OFF -DSDLTTF_SAMPLES=OFF"
-  "FAudio|https://github.com/FNA-XNA/FAudio.git|26.09|-DBUILD_SHARED_LIBS=OFF"
+  "FAudio|https://github.com/FNA-XNA/FAudio.git|26.09|-DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo"
   "freeglut|https://github.com/freeglut/freeglut.git|v3.6.0|-DFREEGLUT_BUILD_DEMOS=OFF -DFREEGLUT_BUILD_STATIC_LIBS=OFF -DFREEGLUT_GLES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_STANDARD=11"
 )
 
@@ -34,17 +35,21 @@ else
   CMAKE="$DEPS/buildtools/bin/cmake"; NINJA="$DEPS/buildtools/bin/ninja"
 fi
 
+shopt -s nullglob
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:/usr/lib32/pkgconfig"
 mkdir -p "$PREFIX" "$SRC"
 
 for entry in "${LIBS[@]}"; do
   IFS='|' read -r name repo tag extra <<<"$entry"
   stamp="$PREFIX/.installed-$name"
-  if [ $FORCE = 0 ] && [ "$(cat "$stamp" 2>/dev/null)" = "$tag" ]; then echo "== $name $tag: up to date"; continue; fi
+  patches=("$ROOT/patches/$name"/*.patch)
+  want="$tag $extra $(cat /dev/null "${patches[@]}" | sha1sum | cut -c1-12)"
+  if [ $FORCE = 0 ] && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then echo "== $name $tag: up to date"; continue; fi
   echo "== $name $tag"
   if [ ! -d "$SRC/$name/.git" ]; then git clone -q "$repo" "$SRC/$name"; fi
   git -C "$SRC/$name" fetch -q --tags origin
-  git -C "$SRC/$name" checkout -q "$tag"
+  git -C "$SRC/$name" checkout -q -f "$tag"
+  for p in "${patches[@]}"; do echo "   patch $(basename "$p")"; git -C "$SRC/$name" apply "$p"; done
   rm -rf "$SRC/$name/build32"
   # shellcheck disable=SC2086
   "$CMAKE" -S "$SRC/$name" -B "$SRC/$name/build32" -G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA" \
@@ -53,7 +58,7 @@ for entry in "${LIBS[@]}"; do
     -DCMAKE_LIBRARY_PATH=/usr/lib32 -DCMAKE_POSITION_INDEPENDENT_CODE=ON $extra >/dev/null
   "$CMAKE" --build "$SRC/$name/build32"
   "$CMAKE" --install "$SRC/$name/build32" >/dev/null
-  echo "$tag" >"$stamp"
+  echo "$want" >"$stamp"
 done
 
 echo "32-bit deps in $PREFIX/lib:"

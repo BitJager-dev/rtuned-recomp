@@ -1,0 +1,386 @@
+diff --git a/src/libsegaapi/libsegaapi.c b/src/libsegaapi/libsegaapi.c
+index fdfcd96..1b16175 100644
+--- a/src/libsegaapi/libsegaapi.c
++++ b/src/libsegaapi/libsegaapi.c
+@@ -17,6 +17,74 @@
+ 
+ #define DEBUG_LEVEL -1
+ 
++// Registry of live buffers: some games keep using a buffer handle after SEGAAPI_DestroyBuffer (harmless on the
++// real hardware). Here that would destroy or touch a freed FAudio voice, and the mixer thread later calls into
++// freed memory. Calls on handles that are not live are logged once and ignored.
++#define LIVE_BUFFERS 8192
++static void *liveBuffers[LIVE_BUFFERS];
++static pthread_mutex_t liveBuffersMutex = PTHREAD_MUTEX_INITIALIZER;
++
++static unsigned int liveSlot(void *handle)
++{
++    return ((unsigned int)(size_t)handle >> 4) % LIVE_BUFFERS;
++}
++
++static void liveAdd(void *handle)
++{
++    pthread_mutex_lock(&liveBuffersMutex);
++    for (unsigned int i = liveSlot(handle), n = 0; n < LIVE_BUFFERS; i = (i + 1) % LIVE_BUFFERS, n++)
++    {
++        if (liveBuffers[i] == NULL || liveBuffers[i] == (void *)1)
++        {
++            liveBuffers[i] = handle;
++            break;
++        }
++    }
++    pthread_mutex_unlock(&liveBuffersMutex);
++}
++
++static int liveFind(void *handle)
++{
++    for (unsigned int i = liveSlot(handle), n = 0; n < LIVE_BUFFERS && liveBuffers[i] != NULL;
++         i = (i + 1) % LIVE_BUFFERS, n++)
++    {
++        if (liveBuffers[i] == handle)
++            return (int)i;
++    }
++    return -1;
++}
++
++static int liveCheck(void *handle, const char *func)
++{
++    pthread_mutex_lock(&liveBuffersMutex);
++    int found = liveFind(handle) >= 0;
++    pthread_mutex_unlock(&liveBuffersMutex);
++    if (!found)
++    {
++        static void *lastDead;
++        if (handle != lastDead)
++            fprintf(stderr, "libsegaapi: %s on a destroyed or unknown buffer %p, ignored\n", func, handle);
++        lastDead = handle;
++    }
++    return found;
++}
++
++// Removes the handle; returns 0 if it was not live (double destroy)
++static int liveRemove(void *handle)
++{
++    pthread_mutex_lock(&liveBuffersMutex);
++    int i = liveFind(handle);
++    if (i >= 0)
++        liveBuffers[i] = (void *)1; // tombstone keeps probe chains intact
++    pthread_mutex_unlock(&liveBuffersMutex);
++    return i >= 0;
++}
++
++#define LIVE_CHECK(handle, returnValue)                                                                                \
++    if (!liveCheck(handle, __func__))                                                                                  \
++        return returnValue;
++
++
+ #define OUTPUT_CHANNELS 6 // FL, FR, BL, BR, C, SW
+ #define MAX_CHANNELS 6
+ #define MAX_SENDS 13
+@@ -271,6 +339,7 @@ static void processSends(Buffer *buffer)
+ int SEGAAPI_Play(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -288,6 +357,7 @@ int SEGAAPI_Play(void *hHandle)
+ int SEGAAPI_Pause(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -301,6 +371,7 @@ int SEGAAPI_Pause(void *hHandle)
+ int SEGAAPI_Stop(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -318,6 +389,7 @@ int SEGAAPI_PlayWithSetup(void *hHandle, unsigned int dwNumSendRouteParams, Send
+                           SynthParamSet *pSynthParams)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -371,6 +443,7 @@ int SEGAAPI_PlayWithSetup(void *hHandle, unsigned int dwNumSendRouteParams, Send
+ PlaybackStatus SEGAAPI_GetPlaybackStatus(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, PLAYBACK_STATUS_INVALID);
++    LIVE_CHECK(hHandle, PLAYBACK_STATUS_INVALID);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -398,6 +471,7 @@ PlaybackStatus SEGAAPI_GetPlaybackStatus(void *hHandle)
+ int SEGAAPI_SetFormat(void *hHandle, OutputFormat *pFormat)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -413,6 +487,7 @@ int SEGAAPI_SetFormat(void *hHandle, OutputFormat *pFormat)
+ int SEGAAPI_GetFormat(void *hHandle, OutputFormat *pFormat)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -428,6 +503,7 @@ int SEGAAPI_GetFormat(void *hHandle, OutputFormat *pFormat)
+ int SEGAAPI_SetSampleRate(void *hHandle, unsigned int dwSampleRate)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -453,6 +529,7 @@ int SEGAAPI_SetSampleRate(void *hHandle, unsigned int dwSampleRate)
+ unsigned int SEGAAPI_GetSampleRate(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -474,6 +551,7 @@ unsigned int SEGAAPI_GetPriority(void *hHandle)
+ int SEGAAPI_SetUserData(void *hHandle, void *hUserData)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -485,6 +563,7 @@ int SEGAAPI_SetUserData(void *hHandle, void *hUserData)
+ void *SEGAAPI_GetUserData(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, NULL);
++    LIVE_CHECK(hHandle, NULL);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -494,6 +573,7 @@ void *SEGAAPI_GetUserData(void *hHandle)
+ int SEGAAPI_SetSendRouting(void *hHandle, unsigned int dwChannel, unsigned int dwSend, Routing dwDest)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -516,6 +596,7 @@ int SEGAAPI_SetSendRouting(void *hHandle, unsigned int dwChannel, unsigned int d
+ Routing SEGAAPI_GetSendRouting(void *hHandle, unsigned int dwChannel, unsigned int dwSend)
+ {
+     HANDLE_CHECK(hHandle, UNUSED_PORT);
++    LIVE_CHECK(hHandle, UNUSED_PORT);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -531,6 +612,7 @@ Routing SEGAAPI_GetSendRouting(void *hHandle, unsigned int dwChannel, unsigned i
+ int SEGAAPI_SetSendLevel(void *hHandle, unsigned int dwChannel, unsigned int dwSend, unsigned int dwLevel)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -550,6 +632,7 @@ int SEGAAPI_SetSendLevel(void *hHandle, unsigned int dwChannel, unsigned int dwS
+ unsigned int SEGAAPI_GetSendLevel(void *hHandle, unsigned int dwChannel, unsigned int dwSend)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -565,6 +648,7 @@ unsigned int SEGAAPI_GetSendLevel(void *hHandle, unsigned int dwChannel, unsigne
+ int SEGAAPI_SetChannelVolume(void *hHandle, unsigned int dwChannel, unsigned int dwVolume)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -581,6 +665,7 @@ int SEGAAPI_SetChannelVolume(void *hHandle, unsigned int dwChannel, unsigned int
+ unsigned int SEGAAPI_GetChannelVolume(void *hHandle, unsigned int dwChannel)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -593,6 +678,7 @@ unsigned int SEGAAPI_GetChannelVolume(void *hHandle, unsigned int dwChannel)
+ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -640,6 +726,7 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
+     // printf("SEGAAPI_SetPlaybackPosition(%p, %d) Looping %d Status %s\n", hHandle, dwPlaybackPos,
+     //        buffer->bDoContinuousLooping, statusString);
+ 
++    pthread_mutex_lock(&fAudioMutex);
+     FAudioVoice_DestroyVoice(buffer->fAudioSourceVoice);
+ 
+     buffer->fAudioFormat.wFormatTag = 1;
+@@ -652,6 +739,7 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
+ 
+     FAudio_CreateSourceVoice(fAudio, &buffer->fAudioSourceVoice, &buffer->fAudioFormat, 0, FAUDIO_MAX_FREQ_RATIO,
+                              (FAudioVoiceCallback *)buffer->fAudioVoiceCallback, NULL, NULL);
++    pthread_mutex_unlock(&fAudioMutex);
+ 
+     if (status == 1)
+     {
+@@ -666,6 +754,7 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
+ unsigned int SEGAAPI_GetPlaybackPosition(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -699,6 +788,7 @@ int SEGAAPI_ClearNotificationPoint(void *hHandle, unsigned int dwBufferOffset)
+ int SEGAAPI_SetStartLoopOffset(void *hHandle, unsigned int dwOffset)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -712,6 +802,7 @@ int SEGAAPI_SetStartLoopOffset(void *hHandle, unsigned int dwOffset)
+ unsigned int SEGAAPI_GetStartLoopOffset(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -721,6 +812,7 @@ unsigned int SEGAAPI_GetStartLoopOffset(void *hHandle)
+ int SEGAAPI_SetEndLoopOffset(void *hHandle, unsigned int dwOffset)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -734,6 +826,7 @@ int SEGAAPI_SetEndLoopOffset(void *hHandle, unsigned int dwOffset)
+ unsigned int SEGAAPI_GetEndLoopOffset(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -743,6 +836,7 @@ unsigned int SEGAAPI_GetEndLoopOffset(void *hHandle)
+ int SEGAAPI_SetEndOffset(void *hHandle, unsigned int dwOffset)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -756,6 +850,7 @@ int SEGAAPI_SetEndOffset(void *hHandle, unsigned int dwOffset)
+ unsigned int SEGAAPI_GetEndOffset(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -765,6 +860,7 @@ unsigned int SEGAAPI_GetEndOffset(void *hHandle)
+ int SEGAAPI_SetLoopState(void *hHandle, int bDoContinuousLooping)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -778,6 +874,7 @@ int SEGAAPI_SetLoopState(void *hHandle, int bDoContinuousLooping)
+ int SEGAAPI_GetLoopState(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -787,6 +884,7 @@ int SEGAAPI_GetLoopState(void *hHandle)
+ int SEGAAPI_UpdateBuffer(void *hHandle, unsigned int dwStartOffset, unsigned int dwLength)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -823,6 +921,7 @@ int SEGAAPI_UpdateBuffer(void *hHandle, unsigned int dwStartOffset, unsigned int
+ int SEGAAPI_SetSynthParam(void *hHandle, SynthParams param, int lPARWValue)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -856,6 +955,7 @@ int SEGAAPI_SetSynthParam(void *hHandle, SynthParams param, int lPARWValue)
+ int SEGAAPI_GetSynthParam(void *hHandle, SynthParams param)
+ {
+     HANDLE_CHECK(hHandle, 0);
++    LIVE_CHECK(hHandle, 0);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -865,6 +965,7 @@ int SEGAAPI_GetSynthParam(void *hHandle, SynthParams param)
+ int SEGAAPI_SetSynthParamMultiple(void *hHandle, unsigned int dwNumParams, SynthParamSet *pSynthParams)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -880,6 +981,7 @@ int SEGAAPI_GetSynthParamMultiple(void *hHandle, unsigned int dwNumParams, Synth
+ {
+ 
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -894,6 +996,7 @@ int SEGAAPI_GetSynthParamMultiple(void *hHandle, unsigned int dwNumParams, Synth
+ int SEGAAPI_SetReleaseState(void *hHandle, int bSet)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    LIVE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
+@@ -1005,6 +1108,7 @@ int SEGAAPI_CreateBuffer(BufferConfig *pConfig, BufferCallback pCallback, unsign
+         break;
+     }
+ 
++    liveAdd(buffer);
+     *phHandle = buffer;
+ 
+     return SEGA_SUCCESS;
+@@ -1013,10 +1117,18 @@ int SEGAAPI_CreateBuffer(BufferConfig *pConfig, BufferCallback pCallback, unsign
+ int SEGAAPI_DestroyBuffer(void *hHandle)
+ {
+     HANDLE_CHECK(hHandle, SEGA_ERROR_BAD_HANDLE);
++    if (!liveRemove(hHandle))
++    {
++        fprintf(stderr, "libsegaapi: SEGAAPI_DestroyBuffer on a destroyed or unknown buffer %p, ignored\n", hHandle);
++        return SEGA_ERROR_BAD_HANDLE;
++    }
+ 
+     Buffer *buffer = (Buffer *)hHandle;
+ 
++    pthread_mutex_lock(&fAudioMutex);
+     FAudioVoice_DestroyVoice(buffer->fAudioSourceVoice);
++    buffer->fAudioSourceVoice = NULL;
++    pthread_mutex_unlock(&fAudioMutex);
+ 
+     if (buffer->fAudioVoiceCallback)
+         free(buffer->fAudioVoiceCallback);

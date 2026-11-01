@@ -1,0 +1,26 @@
+diff --git a/src/FAudio_internal.c b/src/FAudio_internal.c
+index c193ff5..1f2b641 100644
+--- a/src/FAudio_internal.c
++++ b/src/FAudio_internal.c
+@@ -648,7 +648,7 @@ static void FAudio_INTERNAL_DecodeBuffers(
+ 
+ 	while (decoded < *toDecode && voice->src.queued_buffer_count)
+ 	{
+-		float *dst = voice->audio->decoded_audio + (decoded * voice->src.format->nChannels);
++		float *dst;
+ 		struct queued_buffer *buffer = &voice->src.queued_buffers[0];
+ 		uint32_t decode_count;
+ 
+@@ -657,6 +657,12 @@ static void FAudio_INTERNAL_DecodeBuffers(
+ 		/* Start-of-buffer behavior */
+ 		start_buffer(voice, buffer);
+ 
++		/* start_buffer drops all locks around OnBufferStart, and another
++		 * thread may resize (move) decoded_audio meanwhile, e.g. through
++		 * SetSourceSampleRate, so look the pointer up only now.
++		 */
++		dst = voice->audio->decoded_audio + (decoded * voice->src.format->nChannels);
++
+ 		/* Number of samples we are decoding in one call. */
+ 		decode_count = FAudio_min(*toDecode - decoded,
+ 			buffer_get_end(voice, buffer) - voice->src.curBufferOffset);

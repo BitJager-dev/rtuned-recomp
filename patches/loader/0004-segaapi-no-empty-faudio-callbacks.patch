@@ -1,0 +1,22 @@
+--- a/src/libsegaapi/libsegaapi.c
++++ b/src/libsegaapi/libsegaapi.c
+@@ -1029,15 +1029,11 @@
+ 
+     debug(1, "Info: Buffer created with %d channels\n", pConfig->byNumChans);
+ 
+-    buffer->fAudioVoiceCallback = (FAudioVoiceCallbackWithBuffer *)malloc(sizeof(FAudioVoiceCallbackWithBuffer));
+-    buffer->fAudioVoiceCallback->OnBufferStart = StaticOnBufferStart;
++    buffer->fAudioVoiceCallback = (FAudioVoiceCallbackWithBuffer *)calloc(1, sizeof(FAudioVoiceCallbackWithBuffer));
++    // Only OnBufferEnd does something. FAudio drops all its locks around every callback it calls, and the other
++    // threads (the game calling SetSourceSampleRate) can then move the shared decode buffer under the mixer, so the
++    // empty callbacks stay NULL and FAudio skips them.
+     buffer->fAudioVoiceCallback->OnBufferEnd = StaticOnBufferEnd;
+-    buffer->fAudioVoiceCallback->OnBufferStart = StaticOnBufferStart;
+-    buffer->fAudioVoiceCallback->OnLoopEnd = StaticOnLoopEnd;
+-    buffer->fAudioVoiceCallback->OnStreamEnd = StaticOnStreamEnd;
+-    buffer->fAudioVoiceCallback->OnVoiceError = StaticOnVoiceError;
+-    buffer->fAudioVoiceCallback->OnVoiceProcessingPassEnd = StaticOnVoiceProcessingPassEnd;
+-    buffer->fAudioVoiceCallback->OnVoiceProcessingPassStart = StaticOnVoiceProcessingPassStart;
+     buffer->fAudioVoiceCallback->buffer = buffer;
+ 
+     // Use buffer supplied by caller
